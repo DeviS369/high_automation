@@ -1,0 +1,18 @@
+month_plan = {}
+base_qty = fkimg_list[0] if fkimg_list else 0
+for i, month in enumerate(delivery_months):
+    if i == 0:
+        git_qty = total_fkimg
+        con_date = con_date_list[0] if con_date_list else pd.NaT
+        next_git_qty = fkimg_list[1] if len(fkimg_list) > 1 else 0
+    else:
+        if i < len(fkimg_list):
+            git_qty = fkimg_list[i]
+            con_date = con_date_list[i] if i < len(con_date_list) else pd.NaT
+            next_git_qty = fkimg_list[i + 1] if i + 1 < len(fkimg_list) else 0
+        else:
+            git_qty = 0
+            con_date = pd.NaT
+            next_git_qty = 0
+    month_plan[month] = (int(git_qty), int(next_git_qty), con_date)
+previous_stock_val = stock_val
