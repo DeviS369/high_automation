@@ -1,0 +1,69 @@
+def stock():
+    data = {"IT_PULLOUT": []}
+    supplyon, _ = call_data(supplyon_bmw, data)
+
+    def safe_number(val, dtype=float):
+        num = pd.to_numeric(val, errors='coerce')
+        return dtype(num) if pd.notna(num) else dtype(0)
+
+    update_records = []
+    supplyon = supplyon.sort_values(['buyer_article_no', 'delivery_date'])
+    today = pd.Timestamp.today()
+
+    for index, row in supplyon.iterrows():
+        try:
+            delivery_date = pd.to_datetime(row['delivery_date'], errors='coerce')
+            if pd.isna(delivery_date) or delivery_date >= today:
+                continue
+
+            article_no = row['buyer_article_no']
+            warehouse_stock = safe_number(row.get('warehouse_stock'), int)
+            blg_stock = safe_number(row.get('blg_warehouse_stock'), int)
+            delivery_qty = safe_number(row.get('delivery_quantity'), float)
+            git_qty = safe_number(row.get('git_qty'), int)
+
+            # Calculations
+            safety_alarm = warehouse_stock - blg_stock
+            shortfall_demand = delivery_qty - blg_stock
+            total_demand = safety_alarm + shortfall_demand
+
+            # Demand date logic
+            creation_date = pd.to_datetime(row.get('creation_date'), errors='coerce')
+            del_date_days = (datetime.now() - creation_date).days if pd.notna(creation_date) else None
+
+            if del_date_days is not None:
+                demand_dt_prod = (datetime.now() - timedelta(days=100)).date()
+                dem_sea = (datetime.now() - timedelta(days=70)).date()
+                dem_air = (datetime.now() - timedelta(days=25)).date()
+            else:
+                demand_dt_prod = dem_sea = dem_air = None
+
+            # Material position logic
+            if blg_stock > 0:
+                mat_pos = 'Sufficient stock available in warehouse against call off'
+            elif blg_stock == 0 and git_qty != 0:
+                mat_pos = 'Alert on GIT material - Not reported on time against call-off'
+            else:
+                mat_pos = 'Stock not available - Plan for dispatch'
+
+            record = supplyon_bmw.objects.get(pk=row["id"])
+            record.mat_pos = mat_pos
+            record.demand_dt_prod = demand_dt_prod
+            record.dem_sea = dem_sea
+            record.dem_air = dem_air
+            record.tot_demand_qty_raise = total_demand if total_demand >= 0 else None
+            record.safety_stock_alarm = safety_alarm if safety_alarm >= 0 else None
+            record.short_fall_demand_qty = shortfall_demand if shortfall_demand >= 0 else None
+
+            update_records.append(record)
+
+        except Exception as e:
+            print(f"Error processing row {row.get('id', 'unknown')}: {e}")
+
+    if update_records:
+        supplyon_bmw.objects.bulk_update(
+            update_records,
+            ["mat_pos", "demand_dt_prod", "dem_sea", "dem_air",
+             "tot_demand_qty_raise", "safety_stock_alarm", "short_fall_demand_qty"]
+        )
+        print(f"✅ Updated {len(update_records)} material positions.")
